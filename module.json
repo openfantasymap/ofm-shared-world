@@ -1,7 +1,7 @@
 {
-  "name": "module",
-  "title": "New Module",
-  "description": "",
+  "name": "ofm-shared-world",
+  "title": "Fantasymaps Shared World",
+  "description": "Fantasymaps Shared World gives players the experience of living in a shared environment with other players and other GMs interacting with the same content",
   "version": "This is auto replaced",
   "library": "false",
   "manifestPlusVersion": "1.0.0",
@@ -9,9 +9,9 @@
   "compatibleCoreVersion": "9",
   "authors": [
     {
-      "name": "The League of Extraordinary FVTT Developers",
-      "url": "https://github.com/League-of-Foundry-Developers",
-      "discord": "discordID#0001"
+      "name": "FantasyMaps [OpenHistoryMap team]",
+      "url": "https://www.fantasymaps.org",
+      "discord": "sirmmo#0100"
     }
   ],
   "dependencies": [
