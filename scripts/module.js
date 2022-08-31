@@ -22,8 +22,23 @@ class SharedWorld extends Application{
         //};
           
         Hooks.on('updateToken',(scene,data,moved)=>{
-            if (moved.x >0 || moved.y > 0){
-                ChatMessage.create({content: "They see me walkin', they hatin'"});
+            if (data.x || data.y){
+                var activeScene = game.scenes.filter(s=>s.active)[0];
+                var ofmBbox = activeScene.flags.ofmBbox;
+                var px = scene.x / activeScene.width;
+                var py = (activeScene.height-scene.y) / activeScene.height;
+                var cx = ofmBbox[0]+(ofmBbox[2]-ofmBbox[0])*px;
+                var cy = ofmBbox[1]+(ofmBbox[3]-ofmBbox[1])*py;
+                $.post("http://51.15.160.236:9999/api/move", {
+                    movement: JSON.stringify({
+                        actor: {name: scene.name, id: scene.actorId, texture: scene.texture},
+                        x: cx,
+                        y: cy,
+                        ofm: activeScene.flags
+                    })
+                }, ()=>{
+                    console.log('token', scene.actorId, 'moved', scene.x, scene.y, cx, cy);
+                }, 'json')
                 //this.socket.send(JSON.stringify({msg: 'move', instance: '', }))
             }
         }); 
@@ -40,7 +55,7 @@ class SharedWorld extends Application{
             filePicker: false,
         });
 
-        await game.settings.register('ofm-shared-world', 'WORLD_TO_LOAD', {
+        await game.settings.register('ofm-map-canvas', 'WORLD_TO_LOAD', {
             name: 'FantasyMaps shared-world to play on',
             hint: 'FantasyMaps shared-world to play on',
             scope: 'world',
