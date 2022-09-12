@@ -1,12 +1,17 @@
 {
+  "id": "ofm-shared-world",
   "name": "ofm-shared-world",
   "title": "Fantasymaps Shared World",
   "description": "Fantasymaps Shared World gives players the experience of living in a shared environment with other players and other GMs interacting with the same content",
   "version": "This is auto replaced",
-  "library": "false",
-  "manifestPlusVersion": "1.0.0",
-  "minimumCoreVersion": "9",
-  "compatibleCoreVersion": "9",
+  "library": "true",
+  "manifestPlusVersion": "1.2.0",
+  "minimumCoreVersion": 9,
+  "compatibleCoreVersion": "10.284.0",
+  "compatibility": {
+    "minimum": 9, 
+    "verified": "10.284"
+  },
   "authors": [
     {
       "name": "FantasyMaps [OpenHistoryMap team]",
@@ -14,17 +19,21 @@
       "discord": "sirmmo#0100"
     }
   ],
-  "dependencies": [
-
-  ],
-  "conflicts": [
-    
-  ],
+  "relationships":{
+    "requires": [{
+      "id": "ofm-map-canvas",
+      "type": "module",
+      "manifest": "https://github.com/openfantasymaps/ofm-map-canvas/releases/download/0.0.1/module.json",
+      "compatibility": {
+        "verified": "1.2.0"
+      }
+    }]
+  },
   "esmodules": [
     "scripts/module.js"
   ],
   "scripts": [
-    "scripts/lib/lib.js"
+    "scripts/lib/mqtt.min.js"
   ],
   "styles": [
     "styles/module.css"
@@ -46,5 +55,10 @@
       "type": "icon",
       "url": "https://avatars2.githubusercontent.com/u/71292812?s=400&u=ccdb4eeb7abf551ca8f314e5a9bfd0479a4d3d41&v=4"
     }
-  ]
+  ],
+  "flags": {
+    "fvttdevleague": {
+      "package-jam": 2022
+    }
+  }
 }
