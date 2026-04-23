@@ -1,17 +1,8 @@
 {
   "id": "ofm-shared-world",
-  "name": "ofm-shared-world",
   "title": "Fantasymaps Shared World",
-  "description": "Fantasymaps Shared World gives players the experience of living in a shared environment with other players and other GMs interacting with the same content",
+  "description": "Fantasymaps Shared World gives players the experience of living in a shared environment with other players and other GMs interacting with the same content.",
   "version": "This is auto replaced",
-  "library": "true",
-  "manifestPlusVersion": "1.2.0",
-  "minimumCoreVersion": 9,
-  "compatibleCoreVersion": "10.284.0",
-  "compatibility": {
-    "minimum": 9, 
-    "verified": "10.284"
-  },
   "authors": [
     {
       "name": "FantasyMaps [OpenHistoryMap team]",
@@ -19,15 +10,18 @@
       "discord": "sirmmo#0100"
     }
   ],
-  "relationships":{
-    "requires": [{
-      "id": "ofm-map-canvas",
-      "type": "module",
-      "manifest": "https://github.com/openfantasymaps/ofm-map-canvas/releases/download/0.0.1/module.json",
-      "compatibility": {
-        "verified": "1.2.0"
+  "compatibility": {
+    "minimum": 11,
+    "verified": 13
+  },
+  "relationships": {
+    "requires": [
+      {
+        "id": "ofm-map-canvas",
+        "type": "module",
+        "manifest": "https://raw.githubusercontent.com/openfantasymap/ofm-map-canvas/main/module.json"
       }
-    }]
+    ]
   },
   "esmodules": [
     "scripts/module.js"
@@ -45,9 +39,9 @@
       "path": "languages/en.json"
     }
   ],
-  "url": "This is auto replaced",
-  "manifest": "This is auto replaced",
-  "download": "This is auto replaced",
+  "url": "https://github.com/openfantasymap/ofm-shared-world",
+  "manifest": "https://raw.githubusercontent.com/openfantasymap/ofm-shared-world/master/module.json",
+  "download": "https://github.com/openfantasymap/ofm-shared-world/releases/latest/download/module.zip",
   "license": "LICENSE",
   "readme": "README.md",
   "media": [

@@ -1,118 +1,188 @@
 import './lib/mqtt.min.js';
+import { GhostLayer } from './ghost-layer.js';
 
-class SharedWorld extends Application{
-    constructor(object, options){
-        super(object, options);
+const MODULE_ID = "ofm-shared-world";
+const DEFAULT_BROKER_URL = "wss://mqtt.fantasymaps.org:9001";
+
+function ofmFlags(scene) {
+    const f = scene?.flags ?? {};
+    const n = f.ofm ?? {};
+    return {
+        world: n.world ?? f.ofmWorld ?? null,
+        bbox: n.bbox ?? f.ofmBbox ?? null,
+        license: n.license ?? f.ofmLicense ?? null,
+        renderArgs: n.renderArgs ?? f.renderArgs ?? null
+    };
+}
+
+function getSetting(key) {
+    return game.settings.get(MODULE_ID, key);
+}
+
+class SharedWorld {
+    constructor() {
         this.client = null;
-        Hooks.once('init', async () => {
-            SharedWorld.registerSettings(options).then(() => console.log("SharedWorld Settings Registered."));
-            
-        });
-        
-        Hooks.once('ready', async () => {
-            this.client = mqtt.connect("wss://mqtt.fantasymaps.org:9001");
-            const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-            if (LICENSE){
-                this.client.subscribe('ofm/clients/op');
-                this.client.publish("ofm/ops/"+LICENSE, JSON.stringify({"action": "channel_create", "client": LICENSE}));
-                this.client.subscribe("ofm/ops/"+LICENSE);
-                this.client.on("message", (topic, payload) => {
-                    const pl = JSON.parse(payload);
-                    if (topic === "ofm/ops/"+LICENSE){
-                        this.doOperation(pl);
-                    }
-                })
-                this.client.publish("ofm/clients/op", JSON.stringify({"action": "join", "client": LICENSE}));
-            }
-        });
+        this.license = null;
+        this.subscriptions = new Set();
+        this.ghostLayer = new GhostLayer();
 
-        Hooks.on('updateScene', (scene, conf, arg, id) => {
-            console.log(scene, conf, arg, id);
-            const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-            this.client.publish("ofm/view", JSON.stringify({"world": scene.flags.ofmWorld, "bbox": scene.flags.ofmBbox, "client": LICENSE}));
-            this.client.publish("ofm/view/"+LICENSE, JSON.stringify({"world": scene.flags.ofmWorld, "bbox": scene.flags.ofmBbox, "client": LICENSE}));
-            
-        });
+        Hooks.once('init', () => SharedWorld.registerSettings());
+        Hooks.once('ready', () => this.onReady());
 
-        Hooks.on('createToken', (scene, data, id) => {
-            console.log(scene, data, id);
-            const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-            this.client.publish("ofm/view/"+LICENSE, JSON.stringify({"bbox": scene.flags.ofmBbox}));
-        });
-        
-        Hooks.on('deleteToken', (scene, data, id) => {
-            console.log(scene, data, id);
-            const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-            this.client.publish("ofm/view/"+LICENSE, JSON.stringify({"bbox": scene.flags.ofmBbox}));
-        });
-          
-        Hooks.on('updateToken',(scene,data,moved)=>{
-            if (data.x || data.y){
-                const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-                var activeScene = game.scenes.filter(s=>s.active)[0];
-                var ofmBbox = activeScene.flags.ofmBbox;
-                var ofmWorld = activeScene.flags.ofmWorld;
-                var px = scene.x / activeScene.width;
-                var py = (activeScene.height-scene.y) / activeScene.height;
-                var cx = ofmBbox[0]+(ofmBbox[2]-ofmBbox[0])*px;
-                var cy = ofmBbox[1]+(ofmBbox[3]-ofmBbox[1])*py;
-                this.client.publish("ofm/"+ofmWorld+"/actors/"+scene.actorId, JSON.stringify({
-                    client: LICENSE,
-                    actor: {name: scene.name, id: scene.actorId, texture: scene.texture},
-                    x: cx,
-                    y: cy,
-                    ofm: activeScene.flags
-                }));
-                this.client.publish("ofm/"+ofmWorld+"/ops", JSON.stringify({
-                    type: "Movement",
-                    client: LICENSE,
-                    actor: scene.actorId,
-                    scene: scene.parent.id,
-                    x: cx,
-                    y: cy,
-                    ofm: activeScene.flags
-                }))
-            }
-        }); 
-
-        Hooks.on('ofmSharedWorldChange', (data) => {
-            const LICENSE = game.settings.get("ofm-shared-world", "LICENSE");
-            const ofmWorld = data.scene.flags.ofmWorld;
-            this.client.publish("ofm/"+ofmWorld+"/ops", JSON.stringify({
-                type: "World",
-                client: LICENSE,
-                event: data.event,
-                ofm: data.scene.flags
-            }))
-
-            var activeScene = game.scenes.filter(s=>s.active)[0];
-            var args = activeScene.flags.renderArgs;
-
-            this.client.publish("ofm/ops/"+LICENSE, JSON.stringify({"type": "World", "client": LICENSE, args: args}));
-
-        })
+        Hooks.on('canvasReady', () => this.onCanvasReady());
+        Hooks.on('canvasTearDown', () => this.ghostLayer.detach());
     }
 
-    static async registerSettings(options) {       
-        await game.settings.register('ofm-shared-world', 'LICENSE', {
+    static async registerSettings() {
+        game.settings.register(MODULE_ID, 'LICENSE', {
             name: 'License Key',
-            hint: 'Go to Fantasymaps.org or [patreon] to get a license key for the special features.',
+            hint: 'Key used as the client identifier on the geomqtt channel.',
             scope: 'world',
             config: true,
             type: String,
-            default: null,
-            filePicker: false,
+            default: ""
+        });
+
+        game.settings.register(MODULE_ID, 'BROKER_URL', {
+            name: 'geomqtt WebSocket URL',
+            hint: 'MQTT-over-WebSocket endpoint of the geomqtt broker.',
+            scope: 'world',
+            config: true,
+            type: String,
+            default: DEFAULT_BROKER_URL
         });
     }
 
-    async doOperation(payload){
-        if(payload.type==="World"){
-            Hooks.call('ofmSharedWorldUpdateScene', payload.args);
-        } else 
-        if(payload.type==="Movement"){
-            console.log(payload);
+    onReady() {
+        this.license = getSetting("LICENSE") || null;
+        const url = getSetting("BROKER_URL") || DEFAULT_BROKER_URL;
+        if (!this.license) {
+            console.log(`${MODULE_ID} | no license set — geomqtt link disabled`);
+            return;
+        }
+
+        try {
+            this.client = mqtt.connect(url, { clientId: `ofm-${this.license}-${Date.now()}` });
+        } catch (err) {
+            console.error(`${MODULE_ID} | MQTT connect failed`, err);
+            return;
+        }
+
+        this.client.on("connect", () => {
+            console.log(`${MODULE_ID} | connected to ${url}`);
+            this.onCanvasReady();
+        });
+        this.client.on("message", (topic, payload) => this.onMqttMessage(topic, payload));
+        this.client.on("error", (err) => console.error(`${MODULE_ID} | MQTT`, err));
+        this.client.on("close", () => console.log(`${MODULE_ID} | MQTT closed`));
+
+        // expose public API for sibling OFM modules
+        const mod = game.modules.get(MODULE_ID);
+        if (mod) {
+            mod.api = {
+                GhostLayer,
+                ghostLayer: this.ghostLayer,
+                onGhostClick: (fn) => this.ghostLayer.onClick(fn),
+                sharedWorld: this
+            };
+        }
+    }
+
+    onCanvasReady() {
+        this.ghostLayer.detach();
+        this._unsubscribeAll();
+
+        const scene = canvas?.scene;
+        if (!scene) return;
+        const flags = ofmFlags(scene);
+        if (!flags.world || !flags.bbox) return;
+
+        this.ghostLayer.attach(scene, flags);
+        this._subscribeWorld(flags.world);
+    }
+
+    _subscribeWorld(world) {
+        if (!this.client?.connected) return;
+        const tileTopic = `geo/${world}/+/+/+`;
+        const objectTopic = `objects/+`;
+        this._subscribe(tileTopic);
+        this._subscribe(objectTopic);
+    }
+
+    _subscribe(topic) {
+        if (this.subscriptions.has(topic)) return;
+        this.client.subscribe(topic, (err) => {
+            if (err) console.error(`${MODULE_ID} | subscribe ${topic}`, err);
+        });
+        this.subscriptions.add(topic);
+    }
+
+    _unsubscribeAll() {
+        if (!this.client?.connected) {
+            this.subscriptions.clear();
+            return;
+        }
+        for (const topic of this.subscriptions) {
+            try { this.client.unsubscribe(topic); } catch (_) {}
+        }
+        this.subscriptions.clear();
+    }
+
+    onMqttMessage(topic, payload) {
+        let msg;
+        try { msg = JSON.parse(payload.toString()); }
+        catch (_) { return; }
+
+        if (topic.startsWith("geo/")) {
+            this._handleGeoEvent(topic, msg);
+        } else if (topic.startsWith("objects/")) {
+            this._handleObjectEvent(topic, msg);
+        }
+    }
+
+    // geo/<world>/<z>/<x>/<y> — {op, id, lat, lng, attrs?, ts}
+    _handleGeoEvent(topic, msg) {
+        if (!msg || !msg.op || !msg.id) return;
+        // drop echoes of our own publishes
+        if (msg.attrs?.client && msg.attrs.client === this.license) return;
+
+        switch (msg.op) {
+            case "snapshot":
+            case "add":
+            case "move":
+                if (typeof msg.lat === "number" && typeof msg.lng === "number") {
+                    this.ghostLayer.upsert(msg.id, msg.lat, msg.lng, msg.attrs ?? {});
+                }
+                break;
+            case "remove":
+                this.ghostLayer.remove(msg.id);
+                break;
+            case "attr":
+                // tile-side attr updates (forward-compat with v0.2)
+                if (msg.attrs) {
+                    const g = this.ghostLayer.ghosts.get(msg.id);
+                    if (g) this.ghostLayer.upsert(msg.id, g.lastLatLng.lat, g.lastLatLng.lng, msg.attrs);
+                }
+                break;
+        }
+    }
+
+    // objects/<obid> — {op, id, attrs?, ts}
+    _handleObjectEvent(topic, msg) {
+        if (!msg || !msg.id) return;
+        if (msg.op === "delete") {
+            this.ghostLayer.remove(msg.id);
+            return;
+        }
+        const g = this.ghostLayer.ghosts.get(msg.id);
+        if (!g || !msg.attrs) return;
+        // apply attr changes without moving
+        g.attrs = { ...g.attrs, ...msg.attrs };
+        this.ghostLayer._applyInteractivity(g, msg.id);
+        if (msg.attrs.name && g.label) {
+            try { g.label.text = String(msg.attrs.name); } catch (_) {}
         }
     }
 }
 
-const sharedWorld = new SharedWorld();
+new SharedWorld();
